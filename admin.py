@@ -3,212 +3,455 @@ from bson.objectid import ObjectId
 from pymongo import MongoClient
 
 
-def admin_dashboard(db):
-    st.subheader("Admin Overview")
-    st.write("Welcome to the Admin Dashboard")
+# ─────────────────────────────────────────────────────────────
+#  Shared UI helpers
+# ─────────────────────────────────────────────────────────────
 
+def _metric_card(label, value, icon="", accent="#4f8ef7"):
+    st.markdown(f"""
+    <div style="
+        background:#111318;
+        border:1px solid #1e2128;
+        border-radius:12px;
+        padding:1.4rem 1.6rem;
+        display:flex;
+        align-items:center;
+        gap:1rem;
+    ">
+        <div style="
+            width:48px;height:48px;
+            background:rgba(79,142,247,0.12);
+            border-radius:10px;
+            display:flex;align-items:center;justify-content:center;
+            font-size:1.4rem;flex-shrink:0;
+        ">{icon}</div>
+        <div>
+            <div style="color:#6b7280;font-size:0.72rem;font-weight:600;
+                        letter-spacing:0.1em;text-transform:uppercase;margin-bottom:2px;">
+                {label}
+            </div>
+            <div style="font-family:'Syne',sans-serif;font-size:2rem;
+                        font-weight:800;color:#e8eaf0;line-height:1;">
+                {value}
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _section_title(text, subtitle=""):
+    st.markdown(f"""
+    <div style="margin:2rem 0 1.2rem;">
+        <div style="font-family:'Syne',sans-serif;font-size:1.3rem;
+                    font-weight:700;color:#e8eaf0;">{text}</div>
+        {"<div style='color:#6b7280;font-size:0.85rem;margin-top:3px;'>" + subtitle + "</div>" if subtitle else ""}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def _divider():
+    st.markdown(
+        "<hr style='border:none;border-top:1px solid #1e2128;margin:1.2rem 0;'>",
+        unsafe_allow_html=True,
+    )
+
+
+def _badge(text, color="blue"):
+    colors = {
+        "blue":   ("rgba(79,142,247,0.15)",  "#93c5fd"),
+        "green":  ("rgba(34,197,94,0.15)",   "#4ade80"),
+        "purple": ("rgba(124,58,237,0.15)",  "#c4b5fd"),
+        "amber":  ("rgba(245,158,11,0.15)",  "#fbbf24"),
+        "red":    ("rgba(239,68,68,0.15)",   "#f87171"),
+    }
+    bg, fg = colors.get(color, colors["blue"])
+    return (
+        f"<span style='background:{bg};color:{fg};border-radius:999px;"
+        f"padding:3px 10px;font-size:0.7rem;font-weight:600;"
+        f"letter-spacing:0.05em;text-transform:uppercase;'>{text}</span>"
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+#  Admin Dashboard
+# ─────────────────────────────────────────────────────────────
+
+def admin_dashboard(db):
+    # Page header
+    st.markdown("""
+    <div style="padding-bottom:1.5rem;border-bottom:1px solid #1e2128;margin-bottom:2rem;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <span style="font-size:1.4rem;">🛡️</span>
+            <span style="font-family:'Syne',sans-serif;font-size:1.6rem;
+                         font-weight:800;color:#e8eaf0;">Admin Overview</span>
+        </div>
+        <div style="color:#6b7280;font-size:0.88rem;">
+            Monitor students, questions, and system activity at a glance.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Metrics
     total_questions = db.questions.count_documents({})
 
     questions = db.questions.find()
-
-    # Create a dictionary to store class_name as the key and question_name as the value
     class_question_dict = {}
-
-    # Iterate through each document and extract the class_name and question_name
     for question in questions:
-        if 'class_name' in question and 'question_name' in question:
-            class_question_dict[question['class_name']] = question['question_name']
+        if "class_name" in question and "question_name" in question:
+            class_question_dict[question["class_name"]] = question["question_name"]
 
-    # Access JavaFileAnalysis db via the shared client (no reconnection needed)
     java_db = db.client["JavaFileAnalysis"]
     total_students = len(java_db.list_collection_names())
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Total Students", total_students)
+        _metric_card("Registered Students", total_students, "🎓")
     with col2:
-        st.metric("Total Questions", total_questions)
+        _metric_card("Active Questions", total_questions, "📋")
+    with col3:
+        coverage = (
+            f"{round(len(class_question_dict)/max(total_questions,1)*100)}%"
+            if total_questions
+            else "—"
+        )
+        _metric_card("Class Coverage", coverage, "📊")
 
+    _divider()
+
+    # Quick summary table
+    _section_title("Question — Class Mapping", "All assigned questions and their target class names")
+
+    if class_question_dict:
+        # Table header
+        st.markdown("""
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;
+                    background:#1e2128;border-radius:10px 10px 0 0;
+                    padding:0.6rem 1rem;margin-bottom:1px;">
+            <div style="font-size:0.72rem;font-weight:600;letter-spacing:0.1em;
+                        text-transform:uppercase;color:#6b7280;">Question</div>
+            <div style="font-size:0.72rem;font-weight:600;letter-spacing:0.1em;
+                        text-transform:uppercase;color:#6b7280;">Class Name</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        rows_html = ""
+        for i, (cls, qname) in enumerate(class_question_dict.items()):
+            bg = "#111318" if i % 2 == 0 else "#0f1115"
+            border_r = "0 0 10px 10px" if i == len(class_question_dict) - 1 else "0"
+            rows_html += f"""
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;
+                        background:{bg};border-radius:{border_r};
+                        border:1px solid #1e2128;border-top:none;
+                        padding:0.7rem 1rem;">
+                <div style="color:#e8eaf0;font-size:0.88rem;">{qname}</div>
+                <div style="color:#4f8ef7;font-size:0.85rem;font-family:monospace;">{cls}</div>
+            </div>
+            """
+        st.markdown(rows_html, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div style="background:#111318;border:1px solid #1e2128;border-radius:10px;
+                    padding:2rem;text-align:center;color:#6b7280;font-size:0.9rem;">
+            No questions assigned yet. Go to <strong style="color:#4f8ef7;">Manage Questions</strong> to add some.
+        </div>
+        """, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────
+#  Manage Questions
+# ─────────────────────────────────────────────────────────────
 
 def manage_questions(db):
-    st.subheader("Manage Questions")
-    st.subheader("Assign Questions with Classname")
-    st.write("Manage questions for all students:")
+    st.markdown("""
+    <div style="padding-bottom:1.5rem;border-bottom:1px solid #1e2128;margin-bottom:2rem;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <span style="font-size:1.4rem;">📋</span>
+            <span style="font-family:'Syne',sans-serif;font-size:1.6rem;
+                         font-weight:800;color:#e8eaf0;">Manage Questions</span>
+        </div>
+        <div style="color:#6b7280;font-size:0.88rem;">
+            Assign questions to Java class names for student tracking.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     questions_collection = db.questions
 
+    # ── Add question card ──
+    st.markdown("""
+    <div style="background:#111318;border:1px solid #1e2128;border-radius:12px;
+                padding:1.6rem 1.8rem;margin-bottom:2rem;">
+        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:1rem;
+                    color:#e8eaf0;margin-bottom:1.2rem;">
+            ＋ Assign New Question
+        </div>
+    """, unsafe_allow_html=True)
+
     with st.form(key="send_question_form"):
-        # Use session state to store form inputs, but don't overwrite them
-        question_name = st.text_input("Question Name")
-        class_name = st.text_input("Class Name")
-        submit_button = st.form_submit_button("Send Question")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            question_name = st.text_input("Question Name", placeholder="e.g. Implement Binary Search")
+        with col_b:
+            class_name = st.text_input("Class Name", placeholder="e.g. BinarySearch")
 
-        if submit_button:
+        submitted = st.form_submit_button("Assign Question →")
+
+        if submitted:
             if question_name and class_name:
-                # Check if the combination of question_name and class_name already exists
-                existing_question = questions_collection.find_one({
-                    "class_name": class_name
-                })
-
-                if existing_question:
-                    # Show a warning if a duplicate class_name exists
-                    st.warning(f"The class '{class_name}' already has a question assigned.")
+                existing = questions_collection.find_one({"class_name": class_name})
+                if existing:
+                    st.warning(f"Class **{class_name}** already has a question assigned.")
                 else:
-                    # Insert new question if no duplicates are found
-                    new_question = {"question_name": question_name, "class_name": class_name}
                     try:
-                        questions_collection.insert_one(new_question)
-                        st.success("Question sent successfully!")
-                        # Reset session state after successful submission
-                        st.session_state['new_question_name'] = ""
-                        st.session_state['new_class_name'] = ""
+                        questions_collection.insert_one(
+                            {"question_name": question_name, "class_name": class_name}
+                        )
+                        st.success("Question assigned successfully!")
+                        st.session_state["new_question_name"] = ""
+                        st.session_state["new_class_name"] = ""
                         st.rerun()
                     except Exception as e:
-                        st.error(f"Error while sending the question: {e}")
+                        st.error(f"Error: {e}")
             else:
-                st.warning("Please fill in both fields to send the question.")
+                st.warning("Both fields are required.")
 
-    # List existing questions in a table format
-    st.write("### Sent Questions:")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Question list ──
+    _section_title("Assigned Questions", "Click ✏️ to edit or 🗑️ to remove a question")
+
     questions = list(questions_collection.find())
 
     if questions:
         for question in questions:
-            col1, col2, col3 = st.columns([7, 1, 2])
-            with col1:
-                st.markdown(
-                    f"**{question['question_name']}** <br> *Class Name: {question['class_name']}*",
-                    unsafe_allow_html=True
-                )
-            with col2:
-                if st.button("✏️", key=f"edit_button_{question['_id']}"):
-                    st.session_state[f"editing_{question['_id']}"] = True
-            with col3:
-                if st.button("🗑️", key=f"delete_button_{question['_id']}"):
-                    try:
-                        result = questions_collection.delete_one({"_id": ObjectId(question["_id"])})
-                        if result.deleted_count > 0:
-                            st.success("Question deleted successfully!")
-                            st.rerun()
-                        else:
-                            st.warning("No question found to delete.")
-                    except Exception as e:
-                        st.error(f"Error while deleting the question: {e}")
+            qid = question["_id"]
+            is_editing = st.session_state.get(f"editing_{qid}", False)
 
-            # Show edit form if in edit mode
-            if st.session_state.get(f"editing_{question['_id']}", False):
+            # Card container
+            st.markdown(f"""
+            <div style="background:#111318;border:1px solid #1e2128;border-radius:10px;
+                        padding:1rem 1.2rem;margin-bottom:0.6rem;">
+            """, unsafe_allow_html=True)
+
+            if not is_editing:
+                col1, col2, col3 = st.columns([7, 1, 1])
+                with col1:
+                    st.markdown(
+                        f"<div style='color:#e8eaf0;font-weight:500;font-size:0.92rem;'>"
+                        f"{question['question_name']}</div>"
+                        f"<div style='color:#4f8ef7;font-family:monospace;font-size:0.8rem;"
+                        f"margin-top:3px;'>{question['class_name']}</div>",
+                        unsafe_allow_html=True,
+                    )
+                with col2:
+                    if st.button("✏️", key=f"edit_button_{qid}", help="Edit"):
+                        st.session_state[f"editing_{qid}"] = True
+                        st.rerun()
+                with col3:
+                    if st.button("🗑️", key=f"delete_button_{qid}", help="Delete"):
+                        try:
+                            result = questions_collection.delete_one({"_id": ObjectId(qid)})
+                            if result.deleted_count > 0:
+                                st.success("Question deleted.")
+                                st.rerun()
+                            else:
+                                st.warning("Could not find question to delete.")
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+            else:
                 edit_question(db, question)
+
+            st.markdown("</div>", unsafe_allow_html=True)
     else:
-        st.info("No questions available.")
+        st.markdown("""
+        <div style="background:#111318;border:1px dashed #1e2128;border-radius:10px;
+                    padding:2.5rem;text-align:center;color:#6b7280;font-size:0.9rem;">
+            No questions yet. Use the form above to assign your first one.
+        </div>
+        """, unsafe_allow_html=True)
 
 
-# Edit question function
+# ─────────────────────────────────────────────────────────────
+#  Edit question (inline)
+# ─────────────────────────────────────────────────────────────
+
 def edit_question(db, question):
     questions_collection = db.questions
+    qid = question["_id"]
 
-    # Display the current question data in an editable form
-    with st.form(key=f"edit_question_form_{question['_id']}"):
-        # Pre-fill form fields with current data
-        new_question_name = st.text_input(
-            "Edit Question Name",
-            value=question.get("question_name", ""),
-            key=f"edit_name_{question['_id']}"
-        )
-        new_class_name = st.text_input(
-            "Edit Class Name",
-            value=question.get("class_name", ""),
-            key=f"edit_class_{question['_id']}"
-        )
+    st.markdown(
+        f"<div style='color:#f59e0b;font-size:0.8rem;font-weight:600;"
+        f"letter-spacing:0.05em;text-transform:uppercase;margin-bottom:0.8rem;'>"
+        f"✏️ Editing Question</div>",
+        unsafe_allow_html=True,
+    )
 
-        # Submit button for saving changes
-        save_button = st.form_submit_button("Save Changes")
+    with st.form(key=f"edit_question_form_{qid}"):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            new_question_name = st.text_input(
+                "Question Name",
+                value=question.get("question_name", ""),
+                key=f"edit_name_{qid}",
+            )
+        with col_b:
+            new_class_name = st.text_input(
+                "Class Name",
+                value=question.get("class_name", ""),
+                key=f"edit_class_{qid}",
+            )
 
-        if save_button:
+        col_save, col_cancel = st.columns([1, 5])
+        with col_save:
+            save = st.form_submit_button("Save →")
+        with col_cancel:
+            cancel = st.form_submit_button("Cancel")
+
+        if save:
             if new_question_name and new_class_name:
                 try:
-                    # Update question in MongoDB
                     result = questions_collection.update_one(
-                        {"_id": ObjectId(question["_id"])},
-                        {"$set": {"question_name": new_question_name, "class_name": new_class_name}}
+                        {"_id": ObjectId(qid)},
+                        {"$set": {
+                            "question_name": new_question_name,
+                            "class_name": new_class_name,
+                        }},
                     )
-
                     if result.modified_count > 0:
-                        st.success("Question updated successfully!")
-                        st.session_state[f"editing_{question['_id']}"] = False
+                        st.success("Updated successfully!")
+                        st.session_state[f"editing_{qid}"] = False
                         st.rerun()
                     else:
-                        st.warning("No changes were made.")
+                        st.warning("No changes detected.")
                 except Exception as e:
-                    pass
+                    st.error(f"Error: {e}")
             else:
-                st.warning("Both fields are required to update the question.")
+                st.warning("Both fields are required.")
 
-        # Cancel button to exit edit mode
-        if st.form_submit_button("Cancel"):
-            st.session_state[f"editing_{question['_id']}"] = False
+        if cancel:
+            st.session_state[f"editing_{qid}"] = False
+            st.rerun()
 
+
+# ─────────────────────────────────────────────────────────────
+#  Manage Students  (Student Codes)
+# ─────────────────────────────────────────────────────────────
 
 def manage_students(db):
-    st.subheader("Manage Students")
+    st.markdown("""
+    <div style="padding-bottom:1.5rem;border-bottom:1px solid #1e2128;margin-bottom:2rem;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+            <span style="font-size:1.4rem;">🎓</span>
+            <span style="font-family:'Syne',sans-serif;font-size:1.6rem;
+                         font-weight:800;color:#e8eaf0;">Student Codes</span>
+        </div>
+        <div style="color:#6b7280;font-size:0.88rem;">
+            Browse submitted Java files for each student.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Access JavaFileAnalysis db via the shared client (no reconnection needed)
     java_db = db.client["JavaFileAnalysis"]
-
     collections = java_db.list_collection_names()
-    st.write(f"Total Students: {len(collections)}")
 
-    if collections:
-        selected_collection = st.selectbox("Select a collection", collections)
-        st.write(f"You selected: {selected_collection}")
+    # Summary bar
+    st.markdown(f"""
+    <div style="display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap;">
+        <div style="background:#111318;border:1px solid #1e2128;border-radius:8px;
+                    padding:0.6rem 1.2rem;font-size:0.85rem;color:#9ca3af;">
+            <span style="color:#4f8ef7;font-weight:700;font-family:'Syne',sans-serif;">
+                {len(collections)}
+            </span>&nbsp; students registered
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-        # Fetch all documents from the selected collection
-        documents = list(java_db[selected_collection].find())
+    if not collections:
+        st.markdown("""
+        <div style="background:#111318;border:1px dashed #1e2128;border-radius:10px;
+                    padding:3rem;text-align:center;color:#6b7280;">
+            No student collections found in JavaFileAnalysis.
+        </div>
+        """, unsafe_allow_html=True)
+        return
 
-        # Show number of documents
-        st.write(f"Total Commit: {len(documents)}")
+    selected_collection = st.selectbox(
+        "Select Student",
+        collections,
+        help="Each entry corresponds to one student's commit collection.",
+    )
 
-        if documents:
-            # Traverse all documents to collect unique keys from the 'added_java_files' field
-            java_files_keys = set()
+    if not selected_collection:
+        return
 
-            for doc in documents:
-                if 'added_java_files' in doc:
-                    # Ensure 'added_java_files' is a dictionary before accessing its keys
-                    if isinstance(doc['added_java_files'], dict):
-                        java_files_keys.update(doc['added_java_files'].keys())
-                    else:
-                        st.write(f"Warning: 'added_java_files' in document {doc['_id']} is not a dictionary")
-                else:
-                    st.write(f"Warning: 'added_java_files' field is missing in document {doc['_id']}")
+    documents = list(java_db[selected_collection].find())
 
-            # Convert the set of keys to a list
-            java_files_keys = list(java_files_keys)
-            st.write(f"Total .java Files are : {len(java_files_keys)}")
+    # Stats row
+    java_files_keys = set()
+    for doc in documents:
+        added = doc.get("added_java_files", {})
+        if isinstance(added, dict):
+            java_files_keys.update(added.keys())
 
-            if java_files_keys:
-                selected_key = st.selectbox("Select a key from 'added_java_files'", java_files_keys)
+    col1, col2 = st.columns(2)
+    with col1:
+        _metric_card("Total Commits", len(documents), "🔄")
+    with col2:
+        _metric_card("Java Files Submitted", len(java_files_keys), "☕")
 
-                # Once a key is selected, traverse all documents again to display the values for that key
-                if selected_key:
-                    values = []
-                    for doc in documents:
-                        if 'added_java_files' in doc and isinstance(doc['added_java_files'], dict):
-                            if selected_key in doc['added_java_files']:
-                                values.append(doc['added_java_files'][selected_key])
+    if not documents:
+        st.info("No commits found for this student.")
+        return
 
-                    # Display values for the selected key
-                    st.write(f"Values for the key '{selected_key}':")
+    if not java_files_keys:
+        st.markdown("""
+        <div style="background:#111318;border:1px solid #1e2128;border-radius:10px;
+                    padding:1.5rem;color:#6b7280;margin-top:1rem;">
+            No <code style="color:#4f8ef7;">.java</code> files found in added_java_files.
+        </div>
+        """, unsafe_allow_html=True)
+        return
 
-                    for value in values:
-                        # Calculate the number of lines in the value (to adjust height)
-                        num_lines = len(str(value).split('\n'))
-                        # Estimate height based on the number of lines (adjust as needed)
-                        height = max(100, num_lines * 20)
-                        st.text_area("Value", value=str(value), height=height)
+    _divider()
+    _section_title("View File Content", "Select a Java file to inspect its source code")
 
-            else:
-                st.write("No 'added_java_files' field found in any documents or no keys in 'added_java_files'.")
-        else:
-            st.write("No documents found in the selected collection.")
-    else:
-        st.write("No collections found in this database.")
+    selected_key = st.selectbox(
+        "Java File",
+        sorted(java_files_keys),
+        help="Files sourced from added_java_files across all commits",
+    )
+
+    if selected_key:
+        values = []
+        for doc in documents:
+            added = doc.get("added_java_files", {})
+            if isinstance(added, dict) and selected_key in added:
+                values.append({
+                    "date": doc.get("commit_date", "—"),
+                    "time": doc.get("commit_time", "—"),
+                    "message": doc.get("commit_message", "—"),
+                    "content": added[selected_key],
+                })
+
+        for i, v in enumerate(values):
+            st.markdown(f"""
+            <div style="display:flex;align-items:center;gap:10px;margin:0.8rem 0 0.3rem;">
+                <span style="background:#1e2128;border-radius:6px;padding:2px 10px;
+                              font-family:monospace;font-size:0.78rem;color:#6b7280;">
+                    {v['date']} {v['time']}
+                </span>
+                <span style="color:#9ca3af;font-size:0.83rem;font-style:italic;">
+                    {v['message'][:72]}{"…" if len(v['message'])>72 else ""}
+                </span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            num_lines = len(str(v["content"]).split("\n"))
+            height = max(120, min(num_lines * 20, 500))
+            st.text_area(
+                f"Version {i+1}",
+                value=str(v["content"]),
+                height=height,
+                key=f"code_{selected_key}_{i}",
+                label_visibility="collapsed",
+            )
