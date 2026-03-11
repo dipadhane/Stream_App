@@ -3,7 +3,7 @@ from pymongo import MongoClient
 # Replace with your MongoDB Atlas connection string
 username = "streamapp"
 password = "Dipa%401234"
-connection_string = f"mongodb+srv://{username}:{password}@cluster0.uu8yq.mongodb.net/?retryWrites=true&w=majority"
+connection_string = f"mongodb+srv://{username}:{password}@cluster0.zs1k9wi.mongodb.net/?retryWrites=true&w=majority"
 
 
 # Initialize MongoDB client
