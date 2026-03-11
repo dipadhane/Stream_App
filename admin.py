@@ -3,11 +3,10 @@ from bson.objectid import ObjectId
 from pymongo import MongoClient
 
 
-
 def admin_dashboard(db):
     st.subheader("Admin Overview")
     st.write("Welcome to the Admin Dashboard")
-    
+
     total_questions = db.questions.count_documents({})
 
     questions = db.questions.find()
@@ -17,29 +16,19 @@ def admin_dashboard(db):
 
     # Iterate through each document and extract the class_name and question_name
     for question in questions:
-        # Assuming 'class_name' and 'question_name' are fields in the document
         if 'class_name' in question and 'question_name' in question:
             class_question_dict[question['class_name']] = question['question_name']
 
-# Display the dictionary
-    # st.write("Class and Question Name Mapping: ", class_question_dict)
+    # Access JavaFileAnalysis db via the shared client (no reconnection needed)
+    java_db = db.client["JavaFileAnalysis"]
+    total_students = len(java_db.list_collection_names())
 
-    username = "streamapp"
-    password = "Dipa%402971"
-    connection_string = f"mongodb+srv://{username}:{password}@cluster0.zs1k9wi.mongodb.net/?retryWrites=true&w=majority"
-    
-    # Connect to MongoDB
-    client = MongoClient(connection_string)
-    db = client["JavaFileAnalysis"]  # Replace with your actual database name
-
-    # You can add admin summary statistics here
-    total_students = len(db.list_collection_names())
-    
     col1, col2 = st.columns(2)
     with col1:
         st.metric("Total Students", total_students)
     with col2:
         st.metric("Total Questions", total_questions)
+
 
 def manage_questions(db):
     st.subheader("Manage Questions")
@@ -71,9 +60,9 @@ def manage_questions(db):
                         questions_collection.insert_one(new_question)
                         st.success("Question sent successfully!")
                         # Reset session state after successful submission
-                        st.session_state['new_question_name'] = ""  # Clear the question name field
-                        st.session_state['new_class_name'] = ""  # Clear the class name field
-                        st.rerun()  # Refresh the page to show updated data
+                        st.session_state['new_question_name'] = ""
+                        st.session_state['new_class_name'] = ""
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error while sending the question: {e}")
             else:
@@ -85,17 +74,17 @@ def manage_questions(db):
 
     if questions:
         for question in questions:
-            col1, col2, col3 = st.columns([7, 1, 2])  # Adjust column widths
+            col1, col2, col3 = st.columns([7, 1, 2])
             with col1:
                 st.markdown(
                     f"**{question['question_name']}** <br> *Class Name: {question['class_name']}*",
                     unsafe_allow_html=True
                 )
             with col2:
-                if st.button("✏️", key=f"edit_button_{question['_id']}"):  # Edit Icon
+                if st.button("✏️", key=f"edit_button_{question['_id']}"):
                     st.session_state[f"editing_{question['_id']}"] = True
             with col3:
-                if st.button("🗑️", key=f"delete_button_{question['_id']}"):  # Delete Icon
+                if st.button("🗑️", key=f"delete_button_{question['_id']}"):
                     try:
                         result = questions_collection.delete_one({"_id": ObjectId(question["_id"])})
                         if result.deleted_count > 0:
@@ -111,6 +100,7 @@ def manage_questions(db):
                 edit_question(db, question)
     else:
         st.info("No questions available.")
+
 
 # Edit question function
 def edit_question(db, question):
@@ -144,8 +134,8 @@ def edit_question(db, question):
 
                     if result.modified_count > 0:
                         st.success("Question updated successfully!")
-                        st.session_state[f"editing_{question['_id']}"] = False  # Reset edit state
-                        st.rerun()  # Refresh to show changes
+                        st.session_state[f"editing_{question['_id']}"] = False
+                        st.rerun()
                     else:
                         st.warning("No changes were made.")
                 except Exception as e:
@@ -157,22 +147,14 @@ def edit_question(db, question):
         if st.form_submit_button("Cancel"):
             st.session_state[f"editing_{question['_id']}"] = False
 
-    # Existing question management code remains the same as in the previous admin_dashboard
-    # (Keep the existing form for adding, editing, and deleting questions)
+
 def manage_students(db):
     st.subheader("Manage Students")
-    
-    # MongoDB credentials
-    username = "streamapp"
-    password = "Dipa%402971"
-    connection_string = f"mongodb+srv://{username}:{password}@cluster0.zs1k9wi.mongodb.net/?retryWrites=true&w=majority"
-    
-    # Connect to MongoDB
-    client = MongoClient(connection_string)
-    db = client["JavaFileAnalysis"]  # Replace with your actual database name
 
-    # Assuming db is already connected to the MongoDB database
-    collections = db.list_collection_names()
+    # Access JavaFileAnalysis db via the shared client (no reconnection needed)
+    java_db = db.client["JavaFileAnalysis"]
+
+    collections = java_db.list_collection_names()
     st.write(f"Total Students: {len(collections)}")
 
     if collections:
@@ -180,7 +162,7 @@ def manage_students(db):
         st.write(f"You selected: {selected_collection}")
 
         # Fetch all documents from the selected collection
-        documents = list(db[selected_collection].find())  # Assuming you're using MongoDB
+        documents = list(java_db[selected_collection].find())
 
         # Show number of documents
         st.write(f"Total Commit: {len(documents)}")
@@ -188,12 +170,12 @@ def manage_students(db):
         if documents:
             # Traverse all documents to collect unique keys from the 'added_java_files' field
             java_files_keys = set()
-            
+
             for doc in documents:
                 if 'added_java_files' in doc:
                     # Ensure 'added_java_files' is a dictionary before accessing its keys
                     if isinstance(doc['added_java_files'], dict):
-                        java_files_keys.update(doc['added_java_files'].keys())  # Collect unique keys
+                        java_files_keys.update(doc['added_java_files'].keys())
                     else:
                         st.write(f"Warning: 'added_java_files' in document {doc['_id']} is not a dictionary")
                 else:
@@ -202,6 +184,7 @@ def manage_students(db):
             # Convert the set of keys to a list
             java_files_keys = list(java_files_keys)
             st.write(f"Total .java Files are : {len(java_files_keys)}")
+
             if java_files_keys:
                 selected_key = st.selectbox("Select a key from 'added_java_files'", java_files_keys)
 
@@ -212,15 +195,15 @@ def manage_students(db):
                         if 'added_java_files' in doc and isinstance(doc['added_java_files'], dict):
                             if selected_key in doc['added_java_files']:
                                 values.append(doc['added_java_files'][selected_key])
-                    
+
                     # Display values for the selected key
                     st.write(f"Values for the key '{selected_key}':")
-                    
+
                     for value in values:
                         # Calculate the number of lines in the value (to adjust height)
                         num_lines = len(str(value).split('\n'))
                         # Estimate height based on the number of lines (adjust as needed)
-                        height = max(100, num_lines * 20)  # Minimum height of 100, 20 pixels per line
+                        height = max(100, num_lines * 20)
                         st.text_area("Value", value=str(value), height=height)
 
             else:
@@ -229,6 +212,3 @@ def manage_students(db):
             st.write("No documents found in the selected collection.")
     else:
         st.write("No collections found in this database.")
-
-
-
