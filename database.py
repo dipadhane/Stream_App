@@ -1,8 +1,8 @@
 from pymongo import MongoClient
 
 # Replace with your MongoDB Atlas connection string
-username = "abhishelke297127"
-password = "Abhi%402971"
+username = "streamapp"
+password = "Dipa%401234"
 connection_string = f"mongodb+srv://{username}:{password}@cluster0.uu8yq.mongodb.net/?retryWrites=true&w=majority"
 
 
