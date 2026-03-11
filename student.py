@@ -4,7 +4,7 @@ import streamlit as st
 def student_dashboard(db):
     """Student Dashboard with personalized data."""
     st.subheader("Student Dashboard")
-    st.write(f"Welcomes, {st.session_state.role}")
+    st.write(f"Welcome, {st.session_state.role}")
     
     try:
         # Fetch recent assignments
