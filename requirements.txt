@@ -2,4 +2,4 @@ streamlit
 pymongo[srv]
 dnspython
 pygithub
-request
+requests
