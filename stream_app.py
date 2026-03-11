@@ -12,7 +12,7 @@ import re
 
 # MongoDB Connection
 username = "streamapp"
-password = "Dipa%402971"
+password = "Dipa%401234"
 connection_string = f"mongodb+srv://{username}:{password}@cluster0.uu8yq.mongodb.net/?retryWrites=true&w=majority"
 
 def connect_to_mongo():
